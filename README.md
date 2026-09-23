@@ -1,14 +1,14 @@
 # 🎤 MikuQuiz
 
-Quizlet multijugador con temática de **Hatsune Miku**. Creado por **Chizu**.
+Quizlet multijugador  **Hatsune Miku**. Creado por **Chizu**.
 
 ## ✨ Características
-- 🎤 **Iniciar partida**: creas una sala, agregas preguntas (texto + imagen/banner, 4 respuestas, 1 correcta) y configuras duración y puntos meta (máx **9000**).
-- 🎮 **Unirse a partida**: los jugadores entran con el **código de sala** y un **nombre personalizable** (color + emoji).
-- ✅ Correcta = **+5 pts** · ❌ Incorrecta = **−4 pts** + **espera de 5 segundos**.
-- 🔥 Al conseguir **15 puntos** robas **4 pts** al líder.
-- 🎯 Gana quien llegue a la meta o el mejor al acabar el tiempo. Las preguntas **se repiten** en bucle.
-- 👑 El creador ve los puntajes en vivo, quién va en primer lugar y quién ganó, y controla el inicio/fin.
+-  **Iniciar partida**: creas una sala, agregas preguntas (texto + imagen/banner, 4 respuestas, 1 correcta) y configuras duración y puntos meta (máx **9000**).
+-  **Unirse a partida**: los jugadores entran con el **código de sala** y un **nombre personalizable** (color + emoji).
+-  Correcta = **+5 pts** ·  Incorrecta = **−4 pts** + **espera de 5 segundos**.
+-  Al conseguir **15 puntos** robas **4 pts** al líder.
+-  Gana quien llegue a la meta o el mejor al acabar el tiempo. Las preguntas **se repiten** en bucle.
+-  El creador ve los puntajes en vivo, quién va en primer lugar y quién ganó, y controla el inicio/fin.
 
 ## 🚀 Cómo usarlo (GitHub Pages)
 1. Sube esta carpeta a un repositorio de GitHub.
