@@ -24,9 +24,9 @@ function renderHome() {
     <ul>
       <li>El <b>creador</b> inicia partida, agrega sus preguntas con imagen/banner, elige la respuesta correcta y comparte el <b>código</b>.</li>
       <li>Los jugadores se unen con el código, ponen su <b>nombre personalizable</b> (color + emoji) y esperan el <b>START</b> del creador.</li>
-      <li>✅ Correcta <b>+5 pts</b> · ❌ Incorrecta <b>−4 pts</b> y esperas <b>5 segundos</b>.</li>
-      <li>🔥 Al conseguir <b>15 puntos</b> robas <b>4 pts</b> al jugador que va en primer lugar.</li>
-      <li>🎯 Gana quien llegue primero a los puntos meta (máx 9000) o el mejor cuando se acabe el tiempo. ¡Las preguntas se repiten! 🔁</li>
+      <li> Correcta <b>+5 pts</b> ·  Incorrecta <b>−4 pts</b> y esperas <b>5 segundos</b>.</li>
+      <li> Al conseguir <b>15 puntos</b> robas <b>4 pts</b> al jugador que va en primer lugar.</li>
+      <li> Gana quien llegue primero a los puntos meta (máx 9000) o el mejor cuando se acabe el tiempo. ¡Las preguntas se repiten! </li>
     </ul>
   </div>`;
 
@@ -49,7 +49,7 @@ function startHostFlow() {
   </div>`;
   document.getElementById("btn-go").onclick = () => {
     const n = document.getElementById("host-name").value.trim();
-    if (!n) return toast("Pon tu nombre ✍️");
+    if (!n) return toast("Pon tu nombre ");
     HostGame.start(n);
   };
   document.getElementById("btn-back").onclick = goHome;
