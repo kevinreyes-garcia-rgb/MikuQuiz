@@ -50,6 +50,7 @@ const PlayerGame = {
         if (m.theme) applyTheme(m.theme);
         this.target = m.target;
         renderPlayerGameShell();
+        setTimeout(() => inviteShare(false), 600);   // invita a activar la cámara al empezar
         break;
       case "q":
         this.qIndex = m.index; this.total = m.total; this.answered = false;
@@ -211,6 +212,27 @@ function renderPlayerGameShell() {
 document.addEventListener("click", e => {
   if (e.target && e.target.id === "btn-share") PlayerGame.startShare();
 });
+
+/* pantalla de invitación para compartir (el clic es el gesto que pide el permiso) */
+function inviteShare(urgent) {
+  if (PlayerGame.stream || document.getElementById("share-invite")) return;
+  const d = document.createElement("div");
+  d.className = "penalty";
+  d.id = "share-invite";
+  d.innerHTML = `<div style="font-size:70px">🖥️</div>
+    <div style="font-size:24px;font-weight:800;text-align:center;max-width:440px">Cámara anti-trampas</div>
+    <div style="color:#bfe9e5;text-align:center;max-width:430px;line-height:1.5">${urgent
+      ? "El creador quiere ver tu pantalla <b>ahora</b>. Actívala para seguir jugando."
+      : "En esta sala el creador puede ver tu pantalla durante la partida para evitar trampas. Solo se ve lo que hagas en el juego 🎮"}</div>
+    <button class="btn" id="btn-share-now" style="min-width:260px">🖥️ Activar cámara</button>
+    <button class="btn ghost" id="btn-share-later">Ahora no</button>`;
+  document.body.appendChild(d);
+  d.querySelector("#btn-share-now").onclick = async () => {
+    d.remove();
+    await PlayerGame.startShare();
+  };
+  d.querySelector("#btn-share-later").onclick = () => d.remove();
+}
 
 function renderPlayerQuestion(m) {
   const q = m.q;
