@@ -173,3 +173,43 @@ label{display:block;font-size:13px;color:var(--miku-light);margin:12px 0 6px;fon
 .emoji-pick button.on{border-color:var(--miku)}
 h2.title{font-family:'Zen Maru Gothic',sans-serif;color:var(--miku-light);font-size:26px;margin-bottom:8px}
 .hidden{display:none!important}
+
+
+/* ---------- Tema Kasane Teto ---------- */
+body.theme-teto{
+  --miku:#e8405c;
+  --miku-dark:#a91f3a;
+  --miku-light:#ffc2ce;
+  --pink:#ffb84d;
+  --card:#3a1220;
+  --card2:#2a0c16;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(232,64,92,.30), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(255,184,77,.16), transparent 60%),
+    linear-gradient(160deg,#1a060d 0%, #260913 50%, #1a060d 100%);
+}
+body.theme-teto .hero h1{
+  background:linear-gradient(90deg,#ffc2ce,#e8405c,#ffb84d);
+  -webkit-background-clip:text;background-clip:text;
+}
+body.theme-teto .chizu{color:var(--pink)}
+
+/* ---------- Selector de Vocaloid ---------- */
+.voca-title{text-align:center;margin-top:26px;font-family:'Zen Maru Gothic',sans-serif;
+  font-size:clamp(22px,4vw,32px);color:var(--miku-light)}
+.voca-picker{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin:18px auto 0;max-width:640px}
+.voca-card{
+  flex:1;min-width:220px;max-width:280px;cursor:pointer;text-align:center;
+  background:linear-gradient(180deg,var(--card),var(--card2));
+  border:3px solid rgba(57,197,187,.35);border-radius:20px;padding:18px 14px;
+  color:#eafcff;font-family:'Poppins',sans-serif;transition:all .18s;
+}
+.voca-card:hover{transform:translateY(-4px)}
+.voca-card img{width:92px;height:92px;border-radius:50%;object-fit:cover;
+  border:3px solid var(--miku);box-shadow:0 0 18px rgba(57,197,187,.5)}
+.voca-card b{display:block;font-size:19px;margin-top:10px}
+.voca-card small{display:block;color:#bfe9e5;margin-top:4px;font-size:12.5px;line-height:1.4}
+.voca-card.on{border-color:var(--gold);box-shadow:0 0 0 4px rgba(255,209,102,.25), 0 12px 30px rgba(0,0,0,.4)}
+.voca-card.on img{border-color:var(--gold)}
+.voca-card.teto img{border-color:#e8405c;box-shadow:0 0 18px rgba(232,64,92,.6)}
+.voca-card.teto.on{border-color:#ffd166}
