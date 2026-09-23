@@ -7,15 +7,17 @@
    - Robo de puntos al cruzar cada múltiplo de 15
    ========================================================= */
 
-const DEFAULT_BANNER = "https://i.ibb.co/0pSkf5WP/images-3.jpg";
-const DEFAULT_ICON   = "https://i.ibb.co/SDB1rP4W/images-4.jpg";
+function DEFAULT_BANNER() { return themeBanner(); }
+function DEFAULT_ICON()   { return themeIcon(); }
 const MAX_TARGET     = 9000;
 const STEAL_EVERY    = 15;   // cada 15 puntos -> robo
 const STEAL_AMOUNT   = 4;    // puntos robados al líder
 
 const HostGame = {
   code: null,
+  vocaloid: "miku",
   host: null,
+  autoT: null,
   me: "",
   players: new Map(),   // conn -> {name, color, emoji, score, answered}
   questions: [],
@@ -46,13 +48,13 @@ const HostGame = {
         }
         st.players.set(conn, { name: hello.name, color: hello.color, emoji: hello.emoji, score: 0, answered: false });
         st.refreshPlayers();
-        st.host.broadcast({ t: "lobby", players: st.playersList() });
+        st.broadcastLobby();
       },
       onData(conn, msg) { st.handleData(conn, msg); },
       onLeave(conn) {
         st.players.delete(conn);
         st.refreshPlayers();
-        st.host.broadcast({ t: "lobby", players: st.playersList() });
+        st.broadcastLobby();
         st.broadcastScores();
       },
       onError(err) {
@@ -66,6 +68,20 @@ const HostGame = {
 
   playersList() {
     return [...this.players.values()].map(p => ({ name: p.name, color: p.color, emoji: p.emoji, score: p.score }));
+  },
+
+  broadcastLobby() {
+    this.host.broadcast({ t: "lobby", players: this.playersList(), theme: this.vocaloid });
+  },
+
+  /* Teto: cuando TODOS han respondido, pasa sola a la siguiente */
+  checkAutoNext() {
+    if (!THEMES[this.vocaloid].autoNext || !this.started) return;
+    if (this.players.size === 0) return;
+    const all = [...this.players.values()].every(p => p.answered);
+    if (!all) return;
+    clearTimeout(this.autoT);
+    this.autoT = setTimeout(() => { if (this.started) this.next(); }, 2500);
   },
 
   /* ---------- mensajes de jugadores ---------- */
@@ -89,6 +105,7 @@ const HostGame = {
 
       this.host.send(conn, { t: "res", ok, gain: ok ? 5 : -4, correct: q.correct, score: p.score, steal });
       this.broadcastScores();
+      this.checkAutoNext();
 
       // ¿alguien llegó a la meta?
       const winner = [...this.players.values()].find(pl => pl.score >= this.settings.target);
@@ -120,7 +137,7 @@ const HostGame = {
 
   /* ---------- preguntas ---------- */
   addQuestion(text, img, answers, correct) {
-    this.questions.push({ text, img: img || DEFAULT_BANNER, answers, correct });
+    this.questions.push({ text, img: img || DEFAULT_BANNER(), answers, correct });
     renderHostQuestions(this);
     const btn = document.getElementById("btn-start");
     if (btn && this.host) btn.disabled = !(this.questions.length > 0 && !this.started);
@@ -137,7 +154,7 @@ const HostGame = {
     this.qIndex = 0;
     this.timeLeft = this.settings.minutes * 60;
     this.players.forEach(p => p.answered = false);
-    this.host.broadcast({ t: "start", target: this.settings.target });
+    this.host.broadcast({ t: "start", target: this.settings.target, theme: this.vocaloid });
     this.sendQuestion();
     renderHostGame(this);
     this.timerId = setInterval(() => {
@@ -164,6 +181,7 @@ const HostGame = {
 
   next() {
     if (!this.started) return;
+    clearTimeout(this.autoT);
     this.qIndex = (this.qIndex + 1) % this.questions.length; // se repiten
     this.sendQuestion();
     this.broadcastScores();
@@ -180,6 +198,7 @@ const HostGame = {
 
   cleanup() {
     clearInterval(this.timerId);
+    clearTimeout(this.autoT);
     if (this.host) this.host.destroy();
     this.host = null;
     this.players.clear();
@@ -196,7 +215,8 @@ function renderHostLobby(st) {
   <div class="card">
     <div class="lobby-head">
       <div>
-        <h2 class="title">🎤 Sala de ${esc(st.me)}</h2>
+        <h2 class="title">${st.vocaloid === "teto" ? "🥖 Sala Teto de" : "🎤 Sala de"} ${esc(st.me)}</h2>
+        <div class="hint">${st.vocaloid === "teto" ? "⚡ Modo Teto: las preguntas avanzan solas cuando todos responden" : "🎵 Modo Miku: tú pasas las preguntas con el botón"}</div>
         <div id="host-status">🟡 Creando sala...</div>
       </div>
       <div style="text-align:center">
@@ -214,7 +234,7 @@ function renderHostLobby(st) {
       <div class="field"><label>Pregunta</label>
         <input id="q-text" placeholder="Ej: ¿En qué año debutó Hatsune Miku? 🎶"></div>
       <div class="field"><label>Imagen / Banner de la pregunta (URL)</label>
-        <input id="q-img" placeholder="https://..." value="${DEFAULT_BANNER}">
+        <input id="q-img" placeholder="https://..." value="${DEFAULT_BANNER()}">
         <div class="row" style="margin-top:8px">
           <button class="btn small ghost" id="use-banner">🖼️ Usar banner Miku</button>
           <button class="btn small ghost" id="use-icon">⭐ Usar icon Miku</button>
@@ -259,8 +279,8 @@ function renderHostLobby(st) {
     navigator.clipboard?.writeText(st.code);
     toast("¡Código copiado! 📋");
   };
-  document.getElementById("use-banner").onclick = () => setQImg(DEFAULT_BANNER);
-  document.getElementById("use-icon").onclick = () => setQImg(DEFAULT_ICON);
+  document.getElementById("use-banner").onclick = () => setQImg(DEFAULT_BANNER());
+  document.getElementById("use-icon").onclick = () => setQImg(DEFAULT_ICON());
   function setQImg(url){ document.getElementById("q-img").value = url; previewImg(); }
   function previewImg(){
     const url = document.getElementById("q-img").value.trim();
@@ -327,7 +347,7 @@ function renderHostQuestions(st) {
   if (!list) return;
   list.innerHTML = st.questions.map((q, i) => `
     <div class="q-item">
-      <img src="${esc(q.img)}" onerror="this.src='${DEFAULT_ICON}'">
+      <img src="${esc(q.img)}" onerror="this.src='${DEFAULT_ICON()}'">
       <span><b>#${i+1}</b> · ${esc(q.text)}</span>
       <button data-i="${i}" title="Eliminar">🗑️</button>
     </div>`).join("");
@@ -374,7 +394,7 @@ function renderHostQuestion(st) {
   document.getElementById("host-qnum").textContent = `${st.qIndex+1}/${st.questions.length}`;
   el.innerHTML = `
     <div class="q-card">
-      <img class="q-img" src="${esc(q.img)}" onerror="this.src='${DEFAULT_BANNER}'">
+      <img class="q-img" src="${esc(q.img)}" onerror="this.src='${DEFAULT_BANNER()}'">
       <div class="q-text">${esc(q.text)}</div>
       ${q.answers.map((a,i)=>`<button class="opt ${i===q.correct?'right':''}" disabled>${esc(a)} ${i===q.correct?'✅':''}</button>`).join("")}
     </div>`;
