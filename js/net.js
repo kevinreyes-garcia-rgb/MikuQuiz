@@ -1,4 +1,3 @@
-
 /* =========================================================
    MikuQuiz · js/net.js
    Red P2P con PeerJS (broker público gratuito).
