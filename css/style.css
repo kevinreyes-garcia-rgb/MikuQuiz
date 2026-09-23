@@ -213,3 +213,88 @@ body.theme-teto .chizu{color:var(--pink)}
 .voca-card.on img{border-color:var(--gold)}
 .voca-card.teto img{border-color:#e8405c;box-shadow:0 0 18px rgba(232,64,92,.6)}
 .voca-card.teto.on{border-color:#ffd166}
+
+
+/* ---------- Animación de carga (elegir vocaloid) ---------- */
+.loader-overlay{
+  position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:18px;
+  background:radial-gradient(circle at 50% 40%, rgba(57,197,187,.18), transparent 60%),
+             rgba(4,12,16,.96);backdrop-filter:blur(6px);
+  transition:opacity .4s;
+}
+body.theme-teto .loader-overlay{
+  background:radial-gradient(circle at 50% 40%, rgba(232,64,92,.22), transparent 60%),
+             rgba(16,4,8,.96);
+}
+.loader-overlay.hide{opacity:0;pointer-events:none}
+.loader-icon{font-size:84px;animation:spinBounce 1.2s ease-in-out infinite;filter:drop-shadow(0 0 24px rgba(57,197,187,.7))}
+body.theme-teto .loader-icon{filter:drop-shadow(0 0 24px rgba(232,64,92,.7))}
+@keyframes spinBounce{0%{transform:rotate(-12deg) scale(1)}50%{transform:rotate(12deg) scale(1.18)}100%{transform:rotate(-12deg) scale(1)}}
+.loader-text{font-family:'Zen Maru Gothic',sans-serif;font-size:24px;font-weight:900;color:var(--miku-light)}
+.loader-bar{width:min(320px,70vw);height:12px;border-radius:20px;background:#081c22;border:1.5px solid rgba(57,197,187,.4);overflow:hidden}
+.loader-fill{height:100%;width:0;border-radius:20px;background:linear-gradient(90deg,var(--miku-light),var(--miku),var(--pink));animation:fillBar 2.6s ease forwards}
+@keyframes fillBar{to{width:100%}}
+
+
+/* ---------- Packs de preguntas ---------- */
+.pack-active{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#081c22;
+  border:1.5px solid var(--miku);border-radius:12px;padding:10px 14px;color:#eafcff}
+.pack-active b{color:var(--miku-light)}
+.modal-overlay{position:fixed;inset:0;z-index:90;background:rgba(4,12,16,.85);backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;padding:16px}
+.modal-card{width:100%;max-width:560px;max-height:85vh;overflow-y:auto;
+  background:linear-gradient(180deg,var(--card),var(--card2));
+  border:2px solid rgba(57,197,187,.45);border-radius:20px;padding:22px;
+  box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.pack-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#081c22;
+  border:1px solid rgba(57,197,187,.3);border-radius:12px;padding:10px 12px;margin-top:8px}
+
+
+/* ---------- 🎥 Cámara del creador ---------- */
+#monitor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-top:14px}
+.mon-card{background:#081c22;border:1.5px solid rgba(57,197,187,.35);border-radius:14px;padding:12px;animation:pop .25s ease}
+.mon-card.mon-blocked{border-color:#ff6b6b;opacity:.85}
+.mon-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.mon-head b{flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mon-screen{background:#04141a;border:1.5px dashed rgba(57,197,187,.4);border-radius:10px;
+  padding:10px;cursor:pointer;min-height:86px}
+.mon-answer{font-weight:700;font-size:14px;margin:6px 0;color:#eafcff;word-break:break-word}
+.mon-status{font-size:12.5px;font-weight:700;color:#9fd8d3}
+.mon-status.m-ok{color:var(--green)}
+.mon-status.m-warn{color:var(--gold)}
+.mon-status.m-blocked{color:var(--red)}
+.mon-btns{margin-top:10px;gap:6px}
+.mon-btns .btn{flex:1;padding:7px 6px;font-size:12.5px}
+
+
+/* ---------- Pantalla de bloqueo (azul Miku / roja Teto) ---------- */
+.blocked-overlay{
+  position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:16px;text-align:center;padding:20px;
+  backdrop-filter:blur(5px);animation:blockFade .35s ease;
+}
+@keyframes blockFade{from{opacity:0}to{opacity:1}}
+body.theme-miku .blocked-overlay{
+  background:
+    radial-gradient(circle at 50% 32%, rgba(33,150,243,.45), transparent 55%),
+    radial-gradient(circle at 15% 85%, rgba(57,197,187,.25), transparent 50%),
+    rgba(3,10,18,.96);
+  box-shadow:inset 0 0 120px rgba(33,150,243,.35);
+}
+body.theme-teto .blocked-overlay{
+  background:
+    radial-gradient(circle at 50% 32%, rgba(232,64,92,.5), transparent 55%),
+    radial-gradient(circle at 85% 80%, rgba(255,184,77,.2), transparent 50%),
+    rgba(18,3,8,.96);
+  box-shadow:inset 0 0 120px rgba(232,64,92,.4);
+}
+.blocked-icon{font-size:90px;animation:pulse 1.4s infinite;filter:drop-shadow(0 0 26px rgba(255,107,107,.7))}
+.blocked-msg{
+  font-family:'Zen Maru Gothic',sans-serif;font-size:clamp(24px,5vw,36px);font-weight:900;
+  color:#fff;max-width:560px;line-height:1.3;
+  text-shadow:0 0 22px rgba(0,0,0,.6);
+}
+body.theme-miku .blocked-msg{color:#bfe3ff}
+body.theme-teto .blocked-msg{color:#ffd6dd}
+.blocked-sub{color:#eafcff;font-size:16px;opacity:.85}
