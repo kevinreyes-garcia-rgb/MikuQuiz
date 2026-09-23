@@ -44,8 +44,11 @@ function renderHome() {
   </div>`;
 
   document.querySelectorAll(".voca-card").forEach(c => c.onclick = () => {
-    applyTheme(c.dataset.v);
-    document.querySelectorAll(".voca-card").forEach(x => x.classList.toggle("on", x === c));
+    const v = c.dataset.v;
+    showLoader(v, () => { // cuando todo cargó, se aplica el tema
+      applyTheme(v);
+      document.querySelectorAll(".voca-card").forEach(x => x.classList.toggle("on", x === c));
+    });
   });
   document.getElementById("btn-create").onclick = startHostFlow;
   document.getElementById("btn-join").onclick = () => renderJoinForm("");
@@ -71,6 +74,36 @@ function startHostFlow() {
     HostGame.start(n);
   };
   document.getElementById("btn-back").onclick = goHome;
+}
+
+/* ---------- animación de carga al elegir vocaloid ---------- */
+function showLoader(vocaloid, cb) {
+  const th = THEMES[vocaloid];
+  const d = document.createElement("div");
+  d.className = "loader-overlay";
+  d.innerHTML = `
+    <div class="loader-icon">${vocaloid === "teto" ? "🥖" : "🎤"}</div>
+    <div class="loader-text">Cargando ${th.name}...</div>
+    <div class="loader-bar"><div class="loader-fill"></div></div>`;
+  document.body.appendChild(d);
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    cb && cb();
+    d.classList.add("hide");
+    setTimeout(() => d.remove(), 450);
+  };
+  // precargar las imágenes del tema para que se vea todo al instante
+  const urls = [th.icon, th.banner,
+    "https://files.catbox.moe/csutoy.jpeg", "https://files.catbox.moe/2cxidc.jpeg"];
+  let loaded = 0;
+  urls.forEach(u => {
+    const im = new Image();
+    im.onload = im.onerror = () => { if (++loaded >= urls.length) finish(); };
+    im.src = u;
+  });
+  setTimeout(finish, 3000); // por si alguna imagen tarda demasiado
 }
 
 /* ---------- decoración: notas musicales flotantes ---------- */
