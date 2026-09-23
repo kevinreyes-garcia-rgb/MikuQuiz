@@ -122,3 +122,4 @@ function showLoader(vocaloid, cb) {
 })();
 
 renderHome();
+
