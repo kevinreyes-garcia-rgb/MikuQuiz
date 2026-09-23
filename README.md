@@ -9,7 +9,11 @@ Quizlet multijugador  **Hatsune Miku**. Creado por **Chizu**.
 -  Al conseguir **15 puntos** robas **4 pts** al líder.
 -  Gana quien llegue a la meta o el mejor al acabar el tiempo. Las preguntas **se repiten** en bucle.
 -  El creador ve los puntajes en vivo, quién va en primer lugar y quién ganó, y controla el inicio/fin.
-- 🎤 **Elige tu Vocaloid**: **Miku** (modo clásico, el creador pasa las preguntas) o **Teto** (temática roja + las preguntas **avanzan solas** cuando todos responden). Los jugadores que se unen ven el tema de la sala automáticamente.
+- 🎤 **Elige tu Vocaloid**: **Miku** (modo clásico, el creador pasa las preguntas) o **Teto** (temática roja + las preguntas **avanzan solas** cuando todos responden). Los jugadores que se unen ven el tema de la sala automáticamente. Al elegir personaje aparece una **animación de carga** que precarga todo.
+- 🔀 **Respuestas revueltas**: cada jugador recibe las 4 opciones en un orden distinto, la correcta nunca está siempre en la primera.
+- ✏️ **Editar preguntas**: las preguntas ya guardadas se pueden modificar o borrar desde la lista (modos Miku y Teto).
+- 📦 **Packs de preguntas**: máximo **60 preguntas por pack**. Crea un pack con nombre, guárdalo, **cárgalo para jugar**, **descárgalo** como archivo `.json` e **impórtalo** de vuelta desde "📥 Agregar pack".
+- 🎥 **Cámara del creador (V3)**: botón para ver en vivo la "pantalla" de cada jugador (qué opción eligió y su estado). Desde ahí el creador puede **🚫 bloquear por inactivo** (el jugador ve "(nombre del creador) te ha bloqueado por inactivo" y no puede responder hasta ser desbloqueado) y **➕ dar / ➖ quitar puntos** manualmente.
 
 ## 🚀 Cómo usarlo (GitHub Pages)
 1. Sube esta carpeta a un repositorio de GitHub.
