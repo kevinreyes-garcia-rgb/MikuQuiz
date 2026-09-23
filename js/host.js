@@ -97,6 +97,14 @@ const HostGame = {
       const q = this.questions[this.qIndex];
       if (!p || !q || p.answered || p.blocked || msg.qIndex !== this.qIndex) return;
 
+      // 🔒 modo anti-trampas: sin pantalla compartida no se responde
+      if (this.requireScreen && !(p.view && p.view.st === "sharing")) {
+        this.host.send(conn, { t: "needscreen" });
+        p.answered = true;              // pierde esta pregunta
+        this.checkAutoNext();
+        return;
+      }
+
       p.answered = true;
       if (p.curCorrect == null) return;
       const ok = msg.choice === p.curCorrect;
@@ -143,6 +151,9 @@ const HostGame = {
 
   /* ---------- preguntas ---------- */
   editing: null,   // índice de la pregunta que se está editando
+  requireScreen: false,    // 🔒 si es true, sin pantalla compartida no se puede responder
+  streams: new Map(),      // nombre -> MediaStream (pantalla del jugador)
+  bigView: null,           // nombre del jugador en vista grande
   packs: loadPacks(),      // packs guardados { nombre: {name, questions[]} }
   currentPack: null,       // pack activo (las preguntas se guardan ahí)
   MAX_PACK: 60,            // máximo de preguntas por pack
@@ -226,6 +237,22 @@ const HostGame = {
   },
   renderMon() {
     if (document.getElementById("monitor-modal")) renderMonitor(this);
+    refreshBigView(this);
+  },
+
+  /* 🖥️ llama al jugador para ver su pantalla en vivo */
+  watchPlayer(conn, name) {
+    if (this.streams.has(name)) { toast("Ya estás viendo la pantalla de " + name); return; }
+    try {
+      const call = this.host.peer.call(conn.peer, new MediaStream());
+      call.on("stream", (remote) => {
+        this.streams.set(name, remote);
+        this.renderMon();
+      });
+      call.on("close", () => { this.streams.delete(name); this.renderMon(); });
+      call.on("error", () => { this.streams.delete(name); toast("No se pudo ver la pantalla de " + name); });
+      toast("Pidiendo pantalla de " + name + " 🖥️ (el jugador debe aceptar)");
+    } catch (e) { toast("No se pudo conectar la videollamada ❌"); }
   },
 
   addQuestion(text, img, answers, correct) {
@@ -516,12 +543,24 @@ function openMonitor(st) {
   d.innerHTML = `<div class="modal-card" style="max-width:780px">
     <h2 class="title">🎥 Cámara · pantallas de los jugadores</h2>
     <div class="hint">Mira en vivo qué responde cada jugador. Toca las tarjetas para bloquear o dar/quitar puntos.</div>
+    <button class="btn small ghost" id="btn-req-screen" style="margin-top:10px">🔒 Exigir pantalla para responder: NO</button>
     <div id="monitor-grid"></div>
     <div class="row" style="margin-top:14px"><button class="btn small ghost" id="btn-close-monitor">Cerrar</button></div>
   </div>`;
   document.body.appendChild(d);
   d.querySelector("#btn-close-monitor").onclick = closeMonitor;
   d.onclick = e => { if (e.target === d) closeMonitor(); };
+  const rb = d.querySelector("#btn-req-screen");
+  rb.textContent = "🔒 Exigir pantalla para responder: " + (st.requireScreen ? "SÍ" : "NO");
+  rb.classList.toggle("ghost", !st.requireScreen);
+  rb.onclick = () => {
+    st.requireScreen = !st.requireScreen;
+    rb.textContent = "🔒 Exigir pantalla para responder: " + (st.requireScreen ? "SÍ" : "NO");
+    rb.classList.toggle("ghost", !st.requireScreen);
+    toast(st.requireScreen
+      ? "Modo anti-trampas ON: sin pantalla compartida nadie puede responder 🔒"
+      : "Exigencia de pantalla desactivada");
+  };
   renderMonitor(st);
 }
 function closeMonitor() { const m = document.getElementById("monitor-modal"); if (m) m.remove(); }
@@ -530,6 +569,8 @@ function viewStatus(p) {
   if (p.blocked) return ["🚫 bloqueado", "m-blocked"];
   if (!p.view || p.view.q == null) return ["⏳ esperando", ""];
   if (p.view.q !== HostGame.qIndex) return ["⏳ esperando", ""];
+  if (p.view.st === "sharing") return ["🖥️ compartiendo pantalla", "m-ok"];
+  if (p.view.st === "share-ended") return ["🖫 pantalla NO compartida", "m-warn"];
   if (p.view.st === "penalty") return ["⏳ penalización 5s", "m-warn"];
   if (p.view.st === "ok") return ["✅ acertó", "m-ok"];
   if (p.view.st === "picked") return ["✍️ ya eligió", ""];
@@ -537,23 +578,41 @@ function viewStatus(p) {
   return ["✍️ respondiendo...", ""];
 }
 
+function getViewInfo(st, p) {
+  const [stxt, scls] = viewStatus(p);
+  const pickedTxt = (p.view && p.view.picked != null && p.curAnswers)
+    ? esc(p.curAnswers[p.view.picked]) : "— sin respuesta —";
+  return { stxt, scls, pickedTxt };
+}
+
+/* helper: bloquear pidiendo motivo */
+function blockFlow(st, conn, p) {
+  if (p.blocked) { st.unblockPlayer(conn); return; }
+  const r = prompt("Motivo del bloqueo para " + p.name + ":\n(lo que escribas se lo mostrará)", "inactividad");
+  if (r === null) return;
+  st.blockPlayer(conn, r);
+}
+
 function renderMonitor(st) {
   const g = document.getElementById("monitor-grid");
   if (!g) return;
   const ps = [...st.players.entries()];
   g.innerHTML = ps.length ? ps.map(([conn, p]) => {
-    const [stxt, scls] = viewStatus(p);
-    const pickedTxt = (p.view && p.view.picked != null && p.curAnswers)
-      ? esc(p.curAnswers[p.view.picked]) : "— sin respuesta —";
-    return `<div class="mon-card ${p.blocked ? 'mon-blocked' : ''}">
+    const inf = getViewInfo(st, p);
+    const hasVideo = st.streams.has(p.name);
+    return `<div class="mon-card ${p.blocked ? 'mon-blocked' : ''} ${hasVideo ? 'mon-has-video' : ''}">
       <div class="mon-head"><span class="dot" style="background:${p.color}"></span><span>${p.emoji}</span>
         <b>${esc(p.name)}</b><span class="pts">${p.score} pts</span></div>
-      <div class="mon-screen" onclick="document.getElementById('mon-btns-${esc(p.name).replace(/[^a-z0-9]/gi,'')}')?.classList.toggle('hidden')">
-        <div class="hint">Pantalla · Pregunta ${p.view && p.view.q != null ? p.view.q + 1 : "—"}/${st.questions.length}</div>
-        <div class="mon-answer">${pickedTxt}</div>
-        <div class="mon-status ${scls}">${stxt}</div>
+      <div class="mon-screen">
+        <video class="mon-video" data-vid="${esc(p.name)}" autoplay playsinline muted></video>
+        <div class="mon-nostream">Sin pantalla compartida<br><span style="font-size:11px">(abajo se ve lo que selecciona)</span></div>
+        <div class="hint" style="margin-top:6px">Pregunta ${p.view && p.view.q != null ? p.view.q + 1 : "—"}/${st.questions.length} · selección:</div>
+        <div class="mon-answer">${inf.pickedTxt}</div>
+        <div class="mon-status ${inf.scls}">${inf.stxt}</div>
       </div>
-      <div class="row mon-btns" id="mon-btns-${esc(p.name).replace(/[^a-z0-9]/gi,'')}">
+      <div class="row mon-btns">
+        <button class="btn small ghost" data-watch="${esc(p.name)}">${hasVideo ? "🖥️ Viendo" : "🖥️ Pantalla"}</button>
+        <button class="btn small ghost" data-big="${esc(p.name)}">🔍 Grande</button>
         <button class="btn small ${p.blocked ? '' : 'danger'}" data-blk="${esc(p.name)}">${p.blocked ? "✅ Desbloquear" : "🚫 Bloquear"}</button>
         <button class="btn small" data-give="${esc(p.name)}">➕ Puntos</button>
         <button class="btn small secondary" data-take="${esc(p.name)}">➖ Quitar</button>
@@ -561,15 +620,16 @@ function renderMonitor(st) {
     </div>`;
   }).join("") : `<div class="hint">No hay jugadores en la sala.</div>`;
 
+  attachMonStreams();
   const byName = n => ps.find(([, p]) => p.name === n);
+  g.querySelectorAll("[data-watch]").forEach(b => b.onclick = () => {
+    const found = byName(b.dataset.watch);
+    if (found) st.watchPlayer(found[0], found[1].name);
+  });
+  g.querySelectorAll("[data-big]").forEach(b => b.onclick = () => openBigView(st, b.dataset.big));
   g.querySelectorAll("[data-blk]").forEach(b => b.onclick = () => {
     const found = byName(b.dataset.blk);
-    if (!found) return;
-    const [conn, p] = found;
-    if (p.blocked) { st.unblockPlayer(conn); return; }
-    const r = prompt("Motivo del bloqueo para " + p.name + ":\n(lo que escribas se lo mostrará)", "inactividad");
-    if (r === null) return;
-    st.blockPlayer(conn, r);
+    if (found) blockFlow(st, found[0], found[1]);
   });
   g.querySelectorAll("[data-give]").forEach(b => b.onclick = () => {
     const found = byName(b.dataset.give);
@@ -579,6 +639,74 @@ function renderMonitor(st) {
     const found = byName(b.dataset.take);
     if (found) askPoints(st, found[1], found[0], -1);
   });
+}
+
+/* conecta los videos con las pantallas recibidas */
+function attachMonStreams() {
+  document.querySelectorAll("video[data-vid]").forEach(v => {
+    const s = HostGame.streams.get(v.dataset.vid);
+    if (s && v.srcObject !== s) v.srcObject = s;
+  });
+}
+
+/* ---------- 🔍 vista grande de un jugador ---------- */
+function openBigView(st, name) {
+  closeBigView();
+  st.bigView = name;
+  const d = document.createElement("div");
+  d.className = "modal-overlay";
+  d.id = "bigview-modal";
+  d.innerHTML = `<div class="modal-card" style="max-width:920px">
+    <h2 class="title">🔍 ${esc(name)} — vista grande</h2>
+    <video id="bigvideo" autoplay playsinline muted></video>
+    <div id="bigview-nostream" class="hint" style="margin:8px 0">Pulsa "🖥️ Pedir pantalla" para ver en vivo lo que hace (ratón, ventanas...). En celular verás solo lo que selecciona.</div>
+    <div id="bigview-info"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn small" id="bv-watch">🖥️ Pedir pantalla</button>
+      <button class="btn small ${st.players.size && [...st.players.values()].find(p=>p.name===name)?.blocked ? '' : 'danger'}" id="bv-block">🚫 Bloquear</button>
+      <button class="btn small" id="bv-give">➕ Puntos</button>
+      <button class="btn small secondary" id="bv-take">➖ Quitar</button>
+      <button class="btn small ghost" id="bv-close">Cerrar</button>
+    </div></div>`;
+  document.body.appendChild(d);
+  d.onclick = e => { if (e.target === d) closeBigView(); };
+  d.querySelector("#bv-close").onclick = () => { st.bigView = null; closeBigView(); };
+  d.querySelector("#bv-watch").onclick = () => {
+    const found = [...st.players.entries()].find(([, p]) => p.name === name);
+    if (found) st.watchPlayer(found[0], name);
+  };
+  d.querySelector("#bv-block").onclick = () => {
+    const found = [...st.players.entries()].find(([, p]) => p.name === name);
+    if (found) blockFlow(st, found[0], found[1]);
+  };
+  d.querySelector("#bv-give").onclick = () => {
+    const found = [...st.players.entries()].find(([, p]) => p.name === name);
+    if (found) askPoints(st, found[1], found[0], 1);
+  };
+  d.querySelector("#bv-take").onclick = () => {
+    const found = [...st.players.entries()].find(([, p]) => p.name === name);
+    if (found) askPoints(st, found[1], found[0], -1);
+  };
+  refreshBigView(st);
+}
+function closeBigView() { const m = document.getElementById("bigview-modal"); if (m) m.remove(); }
+
+function refreshBigView(st) {
+  const d = document.getElementById("bigview-modal");
+  if (!d || !st.bigView) return;
+  const name = st.bigView;
+  const found = [...st.players.entries()].find(([, p]) => p.name === name);
+  const v = d.querySelector("#bigvideo");
+  const s = st.streams.get(name);
+  if (s && v && v.srcObject !== s) v.srcObject = s;
+  const ns = d.querySelector("#bigview-nostream");
+  if (ns) ns.style.display = s ? "none" : "block";
+  const info = d.querySelector("#bigview-info");
+  if (info && found) {
+    const p = found[1];
+    const inf = getViewInfo(st, p);
+    info.innerHTML = `<div class="hint">Pregunta ${p.view && p.view.q != null ? p.view.q + 1 : "—"}/${st.questions.length} · selección: <b style="color:#eafcff">${inf.pickedTxt}</b> · <span class="mon-status ${inf.scls}">${inf.stxt}</span> · <b style="color:var(--gold)">${p.score} pts</b>${p.blocked ? " · 🚫 bloqueado" : ""}</div>`;
+  }
 }
 
 function askPoints(st, p, conn, sign) {
