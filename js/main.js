@@ -10,10 +10,23 @@ function goHome() {
 function renderHome() {
   app().innerHTML = `
   <div class="hero">
-    <img class="icon" src="https://i.ibb.co/SDB1rP4W/images-4.jpg" alt="Miku">
+    <img class="icon" src="${themeIcon()}" alt="Vocaloid">
     <h1>MikuQuiz</h1>
     <p>🎤 El quizlet multijugador con temática de Hatsune Miku 🎵</p>
-    <img class="banner" src="https://i.ibb.co/0pSkf5WP/images-3.jpg" alt="Hatsune Miku">
+    <img class="banner" src="${themeBanner()}" alt="Vocaloid">
+  </div>
+    <h2 class="voca-title">🎤 Elige tu Vocaloid 🎤</h2>
+  <div class="voca-picker">
+    <button class="voca-card ${CURRENT_THEME==='miku'?'on':''}" data-v="miku">
+      <img src="https://files.catbox.moe/csutoy.jpeg" alt="Miku">
+      <b>Hatsune Miku</b>
+      <small>Modo clásico: el creador pasa cada pregunta con el botón</small>
+    </button>
+    <button class="voca-card teto ${CURRENT_THEME==='teto'?'on':''}" data-v="teto">
+      <img src="https://files.catbox.moe/2cxidc.jpeg" alt="Teto">
+      <b>Kasane Teto</b>
+      <small>Modo rápido: la pregunta pasa sola cuando todos responden</small>
+    </button>
   </div>
   <div class="menu">
     <button class="btn" id="btn-create">🎤 Iniciar partida</button>
@@ -30,6 +43,10 @@ function renderHome() {
     </ul>
   </div>`;
 
+  document.querySelectorAll(".voca-card").forEach(c => c.onclick = () => {
+    applyTheme(c.dataset.v);
+    document.querySelectorAll(".voca-card").forEach(x => x.classList.toggle("on", x === c));
+  });
   document.getElementById("btn-create").onclick = startHostFlow;
   document.getElementById("btn-join").onclick = () => renderJoinForm("");
 }
@@ -50,6 +67,7 @@ function startHostFlow() {
   document.getElementById("btn-go").onclick = () => {
     const n = document.getElementById("host-name").value.trim();
     if (!n) return toast("Pon tu nombre ");
+    HostGame.vocaloid = CURRENT_THEME;
     HostGame.start(n);
   };
   document.getElementById("btn-back").onclick = goHome;
