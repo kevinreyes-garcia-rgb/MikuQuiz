@@ -69,6 +69,9 @@ class Client {
       this.conn.on("error", () => {});
     });
 
+    // llamada de video del creador (para ver la pantalla del jugador)
+    this.peer.on("call", (call) => { if (this.h.onCall) this.h.onCall(call); });
+
     this.peer.on("error", (err) => {
       this.h.onError && this.h.onError(err);
     });
