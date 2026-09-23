@@ -16,6 +16,8 @@ const PlayerGame = {
   answered: false,
   myScore: 0,
   blocked: false,
+  stream: null,        // pantalla compartida (video)
+  pendingCall: null,   // llamada del creador esperando aceptación
 
   join(code) {
     const st = this;
@@ -77,6 +79,9 @@ const PlayerGame = {
       case "blocked":
         this.applyBlocked(m);
         break;
+      case "needscreen":
+        toast("🔒 El creador exige pantalla compartida para responder. Pulsa 🖥️ Cámara anti-trampas");
+        break;
       case "points":
         this.myScore = m.score;
         const ps = document.getElementById("p-score");
@@ -121,7 +126,10 @@ const PlayerGame = {
     }
   },
 
-  destroy() { if (this.client) { this.client.destroy(); this.client = null; } }
+  destroy() {
+    if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
+    if (this.client) { this.client.destroy(); this.client = null; }
+  }
 };
 
 /* ---------- renders ---------- */
@@ -141,8 +149,9 @@ function renderJoinForm(code) {
       <div class="emoji-pick" id="emoji-pick">
         ${EMOJIS.map((e,i)=>`<button class="${i===0?'on':''}" data-e="${e}">${e}</button>`).join("")}
       </div></div>
+    <div class="hint" style="margin-top:10px">🖥️ Esta sala es <b>anti-trampas</b>: el creador puede pedirte compartir tu pantalla para jugar (se ve solo durante la partida y lo puedes detener al salir).</div>
     <div id="join-status" class="hint" style="margin:14px 0">🟡 Escribe tus datos y entra 🎵</div>
-    <button class="btn" id="btn-join" style="width:100%">🚪 Entrar a la sala</button>
+    <button class="btn" id="btn-join" style="width:100%">🚪 Entrar y acepto la cámara anti-trampas 🖥️</button>
     <button class="btn ghost" id="btn-back" style="width:100%;margin-top:10px">← Volver</button>
   </div>`;
 
@@ -190,13 +199,18 @@ function renderPlayerGameShell() {
       <div class="my-score">⭐ <span id="p-score">0</span> pts</div>
       <div class="timer" id="p-timer">--:--</div>
       <div class="hint" id="p-qnum"></div>
+      <button class="btn small ghost" id="btn-share">🖥️ Cámara anti-trampas (compartir pantalla)</button>
     </div>
     <div class="steal-toast hidden" id="p-steal"></div>
     <div id="p-q"></div>
-    <h2 class="title" style="margin-top:20px">📊 Marcador</h2>
+    <h2 class="title" style="margin-top:20px">📊 Mi puntaje</h2>
     <div class="scoreboard" id="p-scores"></div>
   </div>`;
 }
+
+document.addEventListener("click", e => {
+  if (e.target && e.target.id === "btn-share") PlayerGame.startShare();
+});
 
 function renderPlayerQuestion(m) {
   const q = m.q;
@@ -270,16 +284,15 @@ function renderStealToast(m) {
 function renderPlayerScores(scores, target) {
   const box = document.getElementById("p-scores");
   if (!box) return;
-  const leader = scores.length ? scores[0].name : null;
-  box.innerHTML = scores.map(p => {
-    const isLeader = p.name === leader && p.score > 0;
-    const won = p.score >= target;
-    return `<div class="sb-row ${isLeader?'leader':''}">
+  // privacidad: cada jugador solo ve sus propios puntos
+  const mine = scores.filter(p => p.name === PlayerGame.me.name);
+  const won = mine.length && mine[0].score >= target;
+  box.innerHTML = mine.map(p => `<div class="sb-row ${won?'leader':''}">
       <span class="dot" style="background:${p.color}"></span><span>${p.emoji}</span>
       <b>${esc(p.name)}</b>
-      ${won?'<span class="badge win">🏆 GANÓ</span>':isLeader?'<span class="badge first">👈 va en 1er lugar</span>':''}
-      <span class="pts">${p.score} pts</span></div>`;
-  }).join("");
+      ${won?'<span class="badge win">🏆 ¡LLEGASTE A LA META!</span>':''}
+      <span class="pts">${p.score} pts</span></div>`).join("")
+    || `<div class="hint">Aún no tienes puntos — ¡responde! 🎵</div>`;
 }
 
 function renderPlayerEnd(m) {
