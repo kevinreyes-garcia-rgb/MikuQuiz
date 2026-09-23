@@ -9,6 +9,7 @@ Quizlet multijugador  **Hatsune Miku**. Creado por **Chizu**.
 -  Al conseguir **15 puntos** robas **4 pts** al líder.
 -  Gana quien llegue a la meta o el mejor al acabar el tiempo. Las preguntas **se repiten** en bucle.
 -  El creador ve los puntajes en vivo, quién va en primer lugar y quién ganó, y controla el inicio/fin.
+- 🎤 **Elige tu Vocaloid**: **Miku** (modo clásico, el creador pasa las preguntas) o **Teto** (temática roja + las preguntas **avanzan solas** cuando todos responden). Los jugadores que se unen ven el tema de la sala automáticamente.
 
 ## 🚀 Cómo usarlo (GitHub Pages)
 1. Sube esta carpeta a un repositorio de GitHub.
