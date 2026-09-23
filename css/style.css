@@ -298,3 +298,13 @@ body.theme-teto .blocked-overlay{
 body.theme-miku .blocked-msg{color:#bfe3ff}
 body.theme-teto .blocked-msg{color:#ffd6dd}
 .blocked-sub{color:#eafcff;font-size:16px;opacity:.85}
+
+
+/* ---------- 🖥️ Video de pantalla en la cámara ---------- */
+.mon-video{width:100%;aspect-ratio:16/10;background:#000;border-radius:8px;object-fit:contain;display:none}
+.mon-card.mon-has-video .mon-video{display:block}
+.mon-card.mon-has-video .mon-nostream{display:none}
+.mon-nostream{color:#7fb8b3;font-size:12.5px;text-align:center;padding:14px 6px;
+  border:1.5px dashed rgba(57,197,187,.35);border-radius:8px;background:rgba(4,20,26,.6)}
+#bigvideo{width:100%;max-height:60vh;background:#000;border-radius:12px;object-fit:contain}
+.share-waiting{border-color:var(--gold)!important;color:var(--gold)!important;animation:blink 1s infinite}
