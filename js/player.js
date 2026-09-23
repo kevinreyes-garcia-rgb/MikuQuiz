@@ -40,9 +40,11 @@ const PlayerGame = {
   handle(m) {
     switch (m.t) {
       case "lobby":
+        if (m.theme) applyTheme(m.theme);
         renderPlayerLobby(m.players);
         break;
       case "start":
+        if (m.theme) applyTheme(m.theme);
         this.target = m.target;
         renderPlayerGameShell();
         break;
@@ -168,7 +170,7 @@ function renderPlayerQuestion(m) {
   document.getElementById("p-steal").classList.add("hidden");
   el.innerHTML = `
     <div class="q-card">
-      <img class="q-img" src="${esc(q.img)}" onerror="this.src='${DEFAULT_ICON}'">
+      <img class="q-img" src="${esc(q.img)}" onerror="this.src='${themeIcon()}'">
       <div class="q-text">${esc(q.text)}</div>
       ${q.answers.map((a,i)=>`<button class="opt" data-i="${i}">${esc(a)}</button>`).join("")}
       <div class="feedback" id="p-feedback"></div>
