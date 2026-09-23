@@ -15,6 +15,7 @@ const PlayerGame = {
   total: 0,
   answered: false,
   myScore: 0,
+  blocked: false,
 
   join(code) {
     const st = this;
@@ -51,6 +52,7 @@ const PlayerGame = {
       case "q":
         this.qIndex = m.index; this.total = m.total; this.answered = false;
         renderPlayerQuestion(m);
+        this.sendView("answering", null);
         break;
       case "res": {
         this.myScore = m.score;
@@ -72,6 +74,15 @@ const PlayerGame = {
       case "end":
         renderPlayerEnd(m);
         break;
+      case "blocked":
+        this.applyBlocked(m);
+        break;
+      case "points":
+        this.myScore = m.score;
+        const ps = document.getElementById("p-score");
+        if (ps) ps.textContent = m.score;
+        toast((m.delta > 0 ? "➕ +" : "➖ −") + Math.abs(m.delta) + " pts de " + m.by + " (total " + m.score + ")");
+        break;
       case "error":
         alert(m.msg);
         this.client.destroy(); goHome();
@@ -80,9 +91,34 @@ const PlayerGame = {
   },
 
   answer(choice) {
-    if (this.answered) return;
+    if (this.blocked || this.answered) return;
     this.answered = true;
     this.client.send({ t: "answer", qIndex: this.qIndex, choice });
+  },
+
+  /* avisa al creador lo que ve/hace este jugador (para la cámara) */
+  sendView(st, picked) {
+    this.client.send({ t: "view", q: this.qIndex, picked: picked == null ? null : picked, st: st });
+  },
+
+  applyBlocked(m) {
+    this.blocked = m.blocked;
+    let o = document.getElementById("blocked-overlay");
+    if (m.blocked) {
+      if (!o) {
+        o = document.createElement("div");
+        o.className = "blocked-overlay";
+        o.id = "blocked-overlay";
+        document.body.appendChild(o);
+      }
+      const motive = m.reason ? "te bloqueó por " + m.reason : "te ha bloqueado por inactivo";
+      o.innerHTML = `<div class="blocked-icon">🚫</div>
+        <div class="blocked-msg">${esc(m.by)} ${esc(motive)}</div>
+        <div class="blocked-sub">Ya no puedes responder.<br>Espera a que el creador te desbloquee...</div>`;
+    } else if (o) {
+      o.remove();
+      toast("Has sido desbloqueado ✅");
+    }
   },
 
   destroy() { if (this.client) { this.client.destroy(); this.client = null; } }
@@ -179,6 +215,7 @@ function renderPlayerQuestion(m) {
     el.querySelectorAll(".opt").forEach(x => x.disabled = true);
     b.classList.add("wrong");
     PlayerGame.answer(+b.dataset.i);
+    PlayerGame.sendView("picked", +b.dataset.i);
   });
 }
 
@@ -196,11 +233,14 @@ function renderPlayerResult(m) {
   if (m.ok) {
     fb.className = "feedback good";
     fb.textContent = `✅ ¡Correcto! +5 pts (total ${m.score})`;
+    PlayerGame.sendView("ok", null);
   } else {
     fb.className = "feedback bad";
     fb.textContent = `❌ Incorrecto · −4 pts (total ${m.score})`;
+    PlayerGame.sendView("penalty", null);
     // penalización: esperar 5 segundos antes de poder seguir
     showPenalty();
+    setTimeout(() => PlayerGame.sendView("wait", null), 5000);
   }
 }
 
