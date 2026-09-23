@@ -46,7 +46,7 @@ const HostGame = {
           setTimeout(() => st.host.kick(conn), 600);
           return;
         }
-        st.players.set(conn, { name: hello.name, color: hello.color, emoji: hello.emoji, score: 0, answered: false });
+        st.players.set(conn, { name: hello.name, color: hello.color, emoji: hello.emoji, score: 0, answered: false, blocked: false, view: null });
         st.refreshPlayers();
         st.broadcastLobby();
       },
@@ -67,7 +67,7 @@ const HostGame = {
   },
 
   playersList() {
-    return [...this.players.values()].map(p => ({ name: p.name, color: p.color, emoji: p.emoji, score: p.score }));
+    return [...this.players.values()].map(p => ({ name: p.name, color: p.color, emoji: p.emoji, score: p.score, blocked: !!p.blocked }));
   },
 
   broadcastLobby() {
@@ -87,13 +87,19 @@ const HostGame = {
   /* ---------- mensajes de jugadores ---------- */
   handleData(conn, msg) {
     if (!msg) return;
+    if (msg.t === "view") {   // el jugador reporta su pantalla (para la cámara)
+      const p = this.players.get(conn);
+      if (p) { p.view = msg; this.renderMon(); }
+      return;
+    }
     if (msg.t === "answer" && this.started) {
       const p = this.players.get(conn);
       const q = this.questions[this.qIndex];
-      if (!p || !q || p.answered || msg.qIndex !== this.qIndex) return;
+      if (!p || !q || p.answered || p.blocked || msg.qIndex !== this.qIndex) return;
 
       p.answered = true;
-      const ok = msg.choice === q.correct;
+      if (p.curCorrect == null) return;
+      const ok = msg.choice === p.curCorrect;
       const before = p.score;
       p.score = Math.max(0, p.score + (ok ? 5 : -4));
 
@@ -103,7 +109,7 @@ const HostGame = {
         steal = this.doSteal(p);
       }
 
-      this.host.send(conn, { t: "res", ok, gain: ok ? 5 : -4, correct: q.correct, score: p.score, steal });
+      this.host.send(conn, { t: "res", ok, gain: ok ? 5 : -4, correct: p.curCorrect, score: p.score, steal });
       this.broadcastScores();
       this.checkAutoNext();
 
@@ -136,14 +142,113 @@ const HostGame = {
   },
 
   /* ---------- preguntas ---------- */
+  editing: null,   // índice de la pregunta que se está editando
+  packs: loadPacks(),      // packs guardados { nombre: {name, questions[]} }
+  currentPack: null,       // pack activo (las preguntas se guardan ahí)
+  MAX_PACK: 60,            // máximo de preguntas por pack
+
+  savePacks() { try { localStorage.setItem("mikuquiz_packs", JSON.stringify(this.packs)); } catch (e) {} },
+
+  /* cualquier cambio en el editor se sincroniza con el pack activo */
+  syncPack() {
+    if (this.currentPack && this.packs[this.currentPack]) {
+      if (this.packs[this.currentPack].questions.length > this.MAX_PACK)
+        this.packs[this.currentPack].questions = this.packs[this.currentPack].questions.slice(0, this.MAX_PACK);
+      this.packs[this.currentPack].questions = JSON.parse(JSON.stringify(this.questions));
+      this.savePacks();
+    }
+    renderPackBar(this);
+  },
+
+  createPack(name) {
+    name = (name || "").trim().slice(0, 30);
+    if (!name) return toast("Pon un nombre al pack ✍️");
+    if (this.packs[name]) return toast("Ya existe un pack con ese nombre ❌");
+    this.packs[name] = { name, questions: JSON.parse(JSON.stringify(this.questions)) };
+    this.currentPack = name;
+    this.savePacks();
+    renderPackBar(this);
+    toast("Pack \"" + name + "\" creado 📦");
+  },
+
+  loadPack(name) {
+    const pk = this.packs[name];
+    if (!pk) return;
+    this.questions = JSON.parse(JSON.stringify(pk.questions));
+    this.currentPack = name;
+    this.editing = null;
+    renderHostQuestions(this);
+    renderPackBar(this);
+    clearForm();
+    toast("Pack \"" + name + "\" cargado 🎮");
+  },
+
+  deletePack(name) {
+    delete this.packs[name];
+    if (this.currentPack === name) this.currentPack = null;
+    this.savePacks();
+    renderPackBar(this);
+  },
+
+  /* ---------- 🎥 cámara: vigilar, bloquear y dar/quitar puntos ---------- */
+  blockPlayer(conn, reason) {
+    const p = this.players.get(conn);
+    if (!p || p.blocked) return;
+    reason = (reason || "").trim() || "inactividad";
+    p.blocked = true;
+    p.answered = true;                 // no cuenta para la pregunta actual
+    this.host.send(conn, { t: "blocked", by: this.me, blocked: true, reason: reason });
+    logLine("🚫 " + p.name + " bloqueado por: " + reason);
+    this.broadcastScores();
+    this.checkAutoNext();
+    this.renderMon();
+  },
+  unblockPlayer(conn) {
+    const p = this.players.get(conn);
+    if (!p || !p.blocked) return;
+    p.blocked = false;
+    p.answered = false;
+    this.host.send(conn, { t: "blocked", by: this.me, blocked: false });
+    logLine("✅ " + p.name + " desbloqueado");
+    this.broadcastScores();
+    this.renderMon();
+  },
+  adjustPoints(conn, delta) {
+    const p = this.players.get(conn);
+    if (!p) return;
+    p.score = Math.max(0, p.score + delta);
+    this.host.send(conn, { t: "points", delta: delta, score: p.score, by: this.me });
+    logLine((delta > 0 ? "➕ +" : "➖ −") + Math.abs(delta) + " pts a " + p.name + " (total " + p.score + ")");
+    this.broadcastScores();
+    const winner = [...this.players.values()].find(pl => pl.score >= this.settings.target);
+    if (winner) this.endGame(winner.name, "meta");
+    this.renderMon();
+  },
+  renderMon() {
+    if (document.getElementById("monitor-modal")) renderMonitor(this);
+  },
+
   addQuestion(text, img, answers, correct) {
+    if (this.currentPack && this.packs[this.currentPack]
+        && this.packs[this.currentPack].questions.length >= this.MAX_PACK) {
+      return toast("El pack llegó al máximo de " + this.MAX_PACK + " preguntas 📦");
+    }
     this.questions.push({ text, img: img || DEFAULT_BANNER(), answers, correct });
+    this.syncPack();
     renderHostQuestions(this);
     const btn = document.getElementById("btn-start");
     if (btn && this.host) btn.disabled = !(this.questions.length > 0 && !this.started);
   },
+  updateQuestion(i, text, img, answers, correct) {
+    this.questions[i] = { text, img: img || DEFAULT_BANNER(), answers, correct };
+    this.editing = null;
+    this.syncPack();
+    renderHostQuestions(this);
+  },
   removeQuestion(i) {
     this.questions.splice(i, 1);
+    if (this.editing === i) this.editing = null;
+    this.syncPack();
     renderHostQuestions(this);
   },
 
@@ -171,10 +276,15 @@ const HostGame = {
 
   sendQuestion() {
     const q = this.questions[this.qIndex];
-    this.players.forEach(p => p.answered = false);
-    this.host.broadcast({
-      t: "q", index: this.qIndex, total: this.questions.length,
-      q: { text: q.text, img: q.img, answers: q.answers }
+    this.players.forEach((p, conn) => {
+      p.answered = false;
+      const order = shuffleIdx(q.answers.length);       // orden distinto por jugador
+      p.curAnswers = order.map(i => q.answers[i]);      // lo que ve este jugador
+      p.curCorrect = order.indexOf(q.correct);          // dónde quedó la correcta
+      this.host.send(conn, {
+        t: "q", index: this.qIndex, total: this.questions.length,
+        q: { text: q.text, img: q.img, answers: p.curAnswers }
+      });
     });
     renderHostQuestion(this);
   },
@@ -205,6 +315,16 @@ const HostGame = {
   }
 };
 
+/* revuelve el orden de las 4 respuestas (Fisher-Yates) */
+function shuffleIdx(n) {
+  const a = [...Array(n).keys()];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 /* ================= RENDER (creador) ================= */
 function renderHostLobby(st) {
   const saved = loadDraft();
@@ -230,7 +350,13 @@ function renderHostLobby(st) {
     <div class="players" id="host-players"></div>
 
     <div class="q-editor">
-      <h2 class="title">➕ Agregar pregunta</h2>
+      <h2 class="title">📦 Pack de preguntas</h2>
+      <div id="pack-bar"></div>
+      <div class="row" style="margin:10px 0">
+        <button class="btn small" id="btn-new-pack">📦 Crear pack</button>
+        <button class="btn small secondary" id="btn-add-pack">📥 Agregar pack</button>
+      </div>
+      <h2 class="title" style="margin-top:14px">➕ Agregar pregunta</h2>
       <div class="field"><label>Pregunta</label>
         <input id="q-text" placeholder="Ej: ¿En qué año debutó Hatsune Miku? 🎶"></div>
       <div class="field"><label>Imagen / Banner de la pregunta (URL)</label>
@@ -252,6 +378,7 @@ function renderHostLobby(st) {
       </div>
       <div class="row" style="margin-top:16px">
         <button class="btn" id="btn-add-q">➕ Agregar pregunta</button>
+        <button class="btn ghost hidden" id="btn-cancel-edit">✖ Cancelar edición</button>
       </div>
       <div class="q-list" id="q-list"></div>
     </div>
@@ -303,11 +430,17 @@ function renderHostLobby(st) {
     const answers = [0,1,2,3].map(i => document.getElementById("ans-"+i).value.trim());
     if (!text) return toast("Escribe la pregunta ✍️");
     if (answers.some(a => !a)) return toast("Completa las 4 respuestas ✍️");
-    st.addQuestion(text, img, answers, st.pickIndex);
-    document.getElementById("q-text").value = "";
-    [0,1,2,3].forEach(i => document.getElementById("ans-"+i).value = "");
-    toast("¡Pregunta agregada! ➕");
+    if (st.editing != null) {
+      const idx = st.editing;
+      st.updateQuestion(idx, text, img, answers, st.pickIndex);
+      toast("¡Pregunta #" + (idx+1) + " actualizada! 💾");
+    } else {
+      st.addQuestion(text, img, answers, st.pickIndex);
+      toast("¡Pregunta agregada! ➕");
+    }
+    clearForm();
   };
+  document.getElementById("btn-cancel-edit").onclick = () => { clearForm(); toast("Edición cancelada"); };
 
   document.getElementById("btn-start").onclick = () => {
     const min = Math.max(1, Math.min(120, +document.getElementById("set-min").value || 5));
@@ -322,7 +455,13 @@ function renderHostLobby(st) {
     st.cleanup(); goHome();
   };
 
+  document.getElementById("btn-new-pack").onclick = () => {
+    const name = prompt("Nombre del nuevo pack (máx 60 preguntas):", "Mi pack Miku");
+    if (name !== null) st.createPack(name);
+  };
+  document.getElementById("btn-add-pack").onclick = () => openPackModal(st);
   renderHostQuestions(st);
+  renderPackBar(st);
   refreshStartBtn(st);
 }
 
@@ -342,6 +481,211 @@ function renderHostPlayers(st) {
 }
 HostGame.refreshPlayers = function(){ renderHostPlayers(this); };
 
+function clearForm() {
+  const st = HostGame;
+  if (!document.getElementById("q-text")) return;
+  document.getElementById("q-text").value = "";
+  [0,1,2,3].forEach(i => document.getElementById("ans-"+i).value = "");
+  st.editing = null;
+  document.getElementById("btn-add-q").textContent = "➕ Agregar pregunta";
+  document.getElementById("btn-cancel-edit").classList.add("hidden");
+}
+function loadIntoForm(q, i) {
+  const st = HostGame;
+  document.getElementById("q-text").value = q.text;
+  document.getElementById("q-img").value = q.img;
+  const pv = document.getElementById("q-preview");
+  if (pv) { pv.src = q.img; pv.classList.remove("hidden"); }
+  [0,1,2,3].forEach(k => document.getElementById("ans-"+k).value = q.answers[k]);
+  st.pickIndex = q.correct;
+  document.querySelectorAll(".pick-correct").forEach(x => x.classList.toggle("on", +x.dataset.i === q.correct));
+  document.querySelectorAll(".answer-row input").forEach((inp, k) => inp.classList.toggle("correct", k === q.correct));
+  st.editing = i;
+  document.getElementById("btn-add-q").textContent = "💾 Guardar cambios";
+  document.getElementById("btn-cancel-edit").classList.remove("hidden");
+  document.getElementById("q-text").focus();
+  toast("Editando pregunta #" + (i+1) + " ✏️");
+}
+
+/* ================= 🎥 CÁMARA DEL CREADOR ================= */
+function openMonitor(st) {
+  closeMonitor();
+  const d = document.createElement("div");
+  d.className = "modal-overlay";
+  d.id = "monitor-modal";
+  d.innerHTML = `<div class="modal-card" style="max-width:780px">
+    <h2 class="title">🎥 Cámara · pantallas de los jugadores</h2>
+    <div class="hint">Mira en vivo qué responde cada jugador. Toca las tarjetas para bloquear o dar/quitar puntos.</div>
+    <div id="monitor-grid"></div>
+    <div class="row" style="margin-top:14px"><button class="btn small ghost" id="btn-close-monitor">Cerrar</button></div>
+  </div>`;
+  document.body.appendChild(d);
+  d.querySelector("#btn-close-monitor").onclick = closeMonitor;
+  d.onclick = e => { if (e.target === d) closeMonitor(); };
+  renderMonitor(st);
+}
+function closeMonitor() { const m = document.getElementById("monitor-modal"); if (m) m.remove(); }
+
+function viewStatus(p) {
+  if (p.blocked) return ["🚫 bloqueado", "m-blocked"];
+  if (!p.view || p.view.q == null) return ["⏳ esperando", ""];
+  if (p.view.q !== HostGame.qIndex) return ["⏳ esperando", ""];
+  if (p.view.st === "penalty") return ["⏳ penalización 5s", "m-warn"];
+  if (p.view.st === "ok") return ["✅ acertó", "m-ok"];
+  if (p.view.st === "picked") return ["✍️ ya eligió", ""];
+  if (p.view.st === "wait") return ["⏳ esperando siguiente", ""];
+  return ["✍️ respondiendo...", ""];
+}
+
+function renderMonitor(st) {
+  const g = document.getElementById("monitor-grid");
+  if (!g) return;
+  const ps = [...st.players.entries()];
+  g.innerHTML = ps.length ? ps.map(([conn, p]) => {
+    const [stxt, scls] = viewStatus(p);
+    const pickedTxt = (p.view && p.view.picked != null && p.curAnswers)
+      ? esc(p.curAnswers[p.view.picked]) : "— sin respuesta —";
+    return `<div class="mon-card ${p.blocked ? 'mon-blocked' : ''}">
+      <div class="mon-head"><span class="dot" style="background:${p.color}"></span><span>${p.emoji}</span>
+        <b>${esc(p.name)}</b><span class="pts">${p.score} pts</span></div>
+      <div class="mon-screen" onclick="document.getElementById('mon-btns-${esc(p.name).replace(/[^a-z0-9]/gi,'')}')?.classList.toggle('hidden')">
+        <div class="hint">Pantalla · Pregunta ${p.view && p.view.q != null ? p.view.q + 1 : "—"}/${st.questions.length}</div>
+        <div class="mon-answer">${pickedTxt}</div>
+        <div class="mon-status ${scls}">${stxt}</div>
+      </div>
+      <div class="row mon-btns" id="mon-btns-${esc(p.name).replace(/[^a-z0-9]/gi,'')}">
+        <button class="btn small ${p.blocked ? '' : 'danger'}" data-blk="${esc(p.name)}">${p.blocked ? "✅ Desbloquear" : "🚫 Bloquear"}</button>
+        <button class="btn small" data-give="${esc(p.name)}">➕ Puntos</button>
+        <button class="btn small secondary" data-take="${esc(p.name)}">➖ Quitar</button>
+      </div>
+    </div>`;
+  }).join("") : `<div class="hint">No hay jugadores en la sala.</div>`;
+
+  const byName = n => ps.find(([, p]) => p.name === n);
+  g.querySelectorAll("[data-blk]").forEach(b => b.onclick = () => {
+    const found = byName(b.dataset.blk);
+    if (!found) return;
+    const [conn, p] = found;
+    if (p.blocked) { st.unblockPlayer(conn); return; }
+    const r = prompt("Motivo del bloqueo para " + p.name + ":\n(lo que escribas se lo mostrará)", "inactividad");
+    if (r === null) return;
+    st.blockPlayer(conn, r);
+  });
+  g.querySelectorAll("[data-give]").forEach(b => b.onclick = () => {
+    const found = byName(b.dataset.give);
+    if (found) askPoints(st, found[1], found[0], 1);
+  });
+  g.querySelectorAll("[data-take]").forEach(b => b.onclick = () => {
+    const found = byName(b.dataset.take);
+    if (found) askPoints(st, found[1], found[0], -1);
+  });
+}
+
+function askPoints(st, p, conn, sign) {
+  const v = prompt((sign > 0 ? "¿Cuántos puntos DARLE a " : "¿Cuántos puntos QUITARLE a ") + p.name + "?", "5");
+  if (v === null) return;
+  const n = Math.max(0, Math.min(500, parseInt(v) || 0));
+  if (n) st.adjustPoints(conn, sign * n);
+}
+
+function loadPacks() {
+  try { return JSON.parse(localStorage.getItem("mikuquiz_packs") || "{}"); } catch (e) { return {}; }
+}
+
+function renderPackBar(st) {
+  const el = document.getElementById("pack-bar");
+  if (!el) return;
+  if (st.currentPack && st.packs[st.currentPack]) {
+    const pk = st.packs[st.currentPack];
+    el.innerHTML = `<div class="pack-active">📦 <b>${esc(pk.name)}</b> · ${pk.questions.length}/${st.MAX_PACK} preguntas
+      <button class="btn small ghost" id="btn-close-pack">Salir del pack</button></div>`;
+    el.querySelector("#btn-close-pack").onclick = () => {
+      st.currentPack = null;
+      renderPackBar(st);
+      toast("Pack cerrado (las preguntas siguen en el editor)");
+    };
+  } else {
+    el.innerHTML = `<div class="hint">Sin pack activo: las preguntas se guardan solo en el borrador. Crea un pack para guardarlas, jugarlas y descargarlas.</div>`;
+  }
+}
+
+/* ---------- modal: agregar pack (cargar / descargar / borrar / importar) ---------- */
+function openPackModal(st) {
+  closePackModal();
+  const d = document.createElement("div");
+  d.className = "modal-overlay";
+  d.id = "pack-modal";
+  d.innerHTML = `<div class="modal-card">
+    <h2 class="title">📥 Agregar pack</h2>
+    <div id="pack-modal-list"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn small" id="btn-import-pack">📂 Importar archivo .json</button>
+      <button class="btn small ghost" id="btn-close-modal">Cerrar</button>
+    </div>
+    <input type="file" id="pack-file" accept=".json,application/json" style="display:none">
+    <div class="hint">Usa "🎮 Jugar" para poner las preguntas del pack en la partida, o "📥 Descargar" para guardar el archivo y compartirlo.</div>
+  </div>`;
+  document.body.appendChild(d);
+  renderPackModalList(st);
+  d.querySelector("#btn-close-modal").onclick = closePackModal;
+  d.onclick = e => { if (e.target === d) closePackModal(); };
+  d.querySelector("#btn-import-pack").onclick = () => d.querySelector("#pack-file").click();
+  d.querySelector("#pack-file").onchange = e => { if (e.target.files[0]) importPackFile(e.target.files[0]); };
+}
+function closePackModal() { const m = document.getElementById("pack-modal"); if (m) m.remove(); }
+
+function renderPackModalList(st) {
+  const box = document.getElementById("pack-modal-list");
+  if (!box) return;
+  const names = Object.keys(st.packs);
+  box.innerHTML = names.length ? names.map(n => {
+    const pk = st.packs[n];
+    return `<div class="pack-row">
+      <div style="flex:1;min-width:120px"><b>${esc(pk.name)}</b><div class="hint">${pk.questions.length}/${st.MAX_PACK} preguntas</div></div>
+      <button class="btn small" data-load="${esc(n)}">🎮 Jugar</button>
+      <button class="btn small secondary" data-dl="${esc(n)}">📥 Descargar</button>
+      <button class="btn small danger" data-del="${esc(n)}">🗑️</button>
+    </div>`;
+  }).join("") : `<div class="hint">No tienes packs guardados todavía. Crea uno con "📦 Crear pack".</div>`;
+  box.querySelectorAll("[data-load]").forEach(b => b.onclick = () => { st.loadPack(b.dataset.load); closePackModal(); });
+  box.querySelectorAll("[data-dl]").forEach(b => b.onclick = () => downloadPack(b.dataset.dl));
+  box.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+    if (confirm("¿Borrar el pack \"" + b.dataset.del + "\"?")) { st.deletePack(b.dataset.del); renderPackModalList(st); }
+  });
+}
+
+/* descarga el pack como archivo .json */
+function downloadPack(name) {
+  const pk = HostGame.packs[name];
+  if (!pk) return;
+  const blob = new Blob([JSON.stringify({ app: "MikuQuiz", name: pk.name, questions: pk.questions }, null, 2)],
+    { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = pk.name.replace(/[^\wáéíóúñüÁÉÍÓÚÑÜ -]/gi, "").trim().replace(/\s+/g, "-") + ".mikuquiz.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("Pack descargado 📥");
+}
+
+/* importa un pack desde un archivo descargado */
+function importPackFile(file) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (!d || !Array.isArray(d.questions) || !d.questions.length) throw 0;
+      const name = String(d.name || "Pack importado").slice(0, 30);
+      HostGame.packs[name] = { name, questions: d.questions.slice(0, HostGame.MAX_PACK) };
+      HostGame.savePacks();
+      renderPackModalList(HostGame);
+      renderPackBar(HostGame);
+      toast("Pack \"" + name + "\" importado 📦");
+    } catch (e) { toast("Archivo no válido ❌"); }
+  };
+  r.readAsText(file);
+}
+
 function renderHostQuestions(st) {
   const list = document.getElementById("q-list");
   if (!list) return;
@@ -349,9 +693,11 @@ function renderHostQuestions(st) {
     <div class="q-item">
       <img src="${esc(q.img)}" onerror="this.src='${DEFAULT_ICON()}'">
       <span><b>#${i+1}</b> · ${esc(q.text)}</span>
-      <button data-i="${i}" title="Eliminar">🗑️</button>
+      <button data-e="${i}" title="Editar">✏️</button>
+      <button data-d="${i}" title="Eliminar">🗑️</button>
     </div>`).join("");
-  list.querySelectorAll("button").forEach(b => b.onclick = () => st.removeQuestion(+b.dataset.i));
+  list.querySelectorAll("[data-e]").forEach(b => b.onclick = () => loadIntoForm(st.questions[+b.dataset.e], +b.dataset.e));
+  list.querySelectorAll("[data-d]").forEach(b => b.onclick = () => { st.removeQuestion(+b.dataset.d); clearForm(); });
   refreshStartBtn(st);
 }
 
@@ -373,6 +719,7 @@ function renderHostGame(st) {
       <div>
         <h2 class="title">🎛️ Controles</h2>
         <div style="display:flex;flex-direction:column;gap:10px">
+          <button class="btn" id="btn-monitor">🎥 Cámara (jugadores)</button>
           <button class="btn" id="btn-next">⏭️ Siguiente pregunta</button>
           <button class="btn danger" id="btn-end">🏁 Terminar partida</button>
         </div>
@@ -381,6 +728,7 @@ function renderHostGame(st) {
     </div>
   </div>`;
   document.getElementById("btn-next").onclick = () => st.next();
+  document.getElementById("btn-monitor").onclick = () => openMonitor(st);
   document.getElementById("btn-end").onclick = () => {
     const sorted = st.playersList().sort((a,b)=>b.score-a.score);
     st.endGame(sorted.length ? sorted[0].name : "—", "manual");
@@ -410,6 +758,7 @@ function renderHostScores(st, list) {
     return `<div class="sb-row ${isLeader?'leader':''}">
       <span class="dot" style="background:${p.color}"></span><span>${p.emoji}</span>
       <b>${esc(p.name)}</b>
+      ${p.blocked?'<span class="badge first" style="background:#ff6b6b">🚫</span>':''}
       ${won?'<span class="badge win">🏆 GANÓ</span>':isLeader?'<span class="badge first">👈 va en 1er lugar</span>':''}
       <span class="pts">${p.score} pts</span></div>`;
   }).join("") || `<div class="hint">Sin jugadores aún</div>`;
